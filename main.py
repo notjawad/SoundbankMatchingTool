@@ -3,7 +3,7 @@ import struct
 import shutil
 import os
 import threading
-
+import re
 import tkinter as tk
 import ttkbootstrap as ttk
 
@@ -81,51 +81,55 @@ class App(ttk.Window):
 
     def extract(self):
         self.progress_text.set("Extracting...")
+        matches = []
         files_matched = 0
         files_left = len(self.wem_files)
         for soundbank in self.soundbank_files:
             with open(soundbank, "rb") as soundbank_file:
                 data = soundbank_file.read()
 
-            for i in range(len(data)):
-                if data.startswith(b"RIFF", i):
-                    file_size = struct.unpack("<I", data[i + 4 : i + 8])[0]
+            current_position = 0
+            pattern = re.compile(b"RIFF")
 
-                    for wem in self.wem_files:
-                        with open(wem, "rb") as f:
-                            wem_header = f.read(8)
+            while True:
+                match = pattern.search(data, current_position)
+                if match is None:
+                    break
 
-                            # format: 52 49 46 46 xx xx xx xx
-                            hex_str = " ".join(["{:02x}".format(x) for x in wem_header])
+                current_position = match.start() + 4
+                file_size = struct.unpack(
+                    "<I", data[current_position : current_position + 4]
+                )[0]
 
-                            hex_list = hex_str.split(" ")[-4:]
-                            hex_str = "".join(hex_list)
-                            wem_file_size = struct.unpack("<I", bytes.fromhex(hex_str))[
-                                0
-                            ]
+            for wem in self.wem_files:
+                with open(wem, "rb") as f:
+                    wem_header = f.read(8)
 
-                            if file_size == wem_file_size:
-                                if not os.path.exists("matches"):
-                                    os.makedirs("matches")
+                    # format: 52 49 46 46 xx xx xx xx
+                    hex_str = " ".join(["{:02x}".format(x) for x in wem_header])
 
-                                shutil.copy(wem, "matches")
-                                soundbank_name = soundbank_file.name.split("\\")[
-                                    -1
-                                ].replace(".soundbank", "")
-                                asset_name = os.path.basename(f.name)
-                                if os.path.exists(
-                                    f"matches/{soundbank_name}_{asset_name}"
-                                ):
-                                    pass
-                                else:
-                                    os.rename(
-                                        f"matches/{os.path.basename(wem)}",
-                                        f"matches/{soundbank_name}_{asset_name}",
-                                    )
+                    hex_list = hex_str.split(" ")[-4:]
+                    hex_str = "".join(hex_list)
+                    wem_file_size = struct.unpack("<I", bytes.fromhex(hex_str))[0]
 
-                                    print(
-                                        f"Saved to matches/{soundbank_name}_{asset_name}"
-                                    )
+                    if file_size == wem_file_size:
+                        if not os.path.exists("matches"):
+                            os.makedirs("matches")
+
+                        shutil.copy(wem, "matches")
+                        soundbank_name = soundbank_file.name.split("\\")[-1].replace(
+                            ".soundbank", ""
+                        )
+                        asset_name = os.path.basename(f.name)
+                        if os.path.exists(f"matches/{soundbank_name}_{asset_name}"):
+                            pass
+                        else:
+                            os.rename(
+                                f"matches/{os.path.basename(wem)}",
+                                f"matches/{soundbank_name}_{asset_name}",
+                            )
+
+                            print(f"Saved to matches/{soundbank_name}_{asset_name}")
 
             files_matched += 1
             files_left -= 1
